@@ -59,7 +59,7 @@ def call_openrouter(image_base64: str) -> str:
     )
 
     payload = {
-        "model": "deepseek/deepseek-v3.1-nex-n1",
+        "model": "nex-agi/DeepSeek-V3.1-Nex-N1",
         "messages": [
             {
                 "role": "user",
