@@ -22,21 +22,21 @@ st.caption("Upload a photo and let AI tell you where it is.")
 # Helper Functions
 # -----------------------------
 def image_to_base64(image: Image.Image) -> str:
-"""
+   """
    Convert PIL Image to base64 string
    """
-buffer = io.BytesIO()
-image.save(buffer, format="PNG")
-return base64.b64encode(buffer.getvalue()).decode("utf-8")
+   buffer = io.BytesIO()
+   image.save(buffer, format="PNG")
+   return base64.b64encode(buffer.getvalue()).decode("utf-8")
 
 
 def call_openrouter(image_base64: str) -> str:
-"""
+   """
    Call OpenRouter API with DeepSeek V3.1 Nex N1
    """
-api_key = os.getenv("OPENROUTER_API_KEY")
-if not api_key:
-return "❌ OPENROUTER_API_KEY is not set."
+   api_key = os.getenv("OPENROUTER_API_KEY")
+   if not api_key:
+   return "❌ OPENROUTER_API_KEY is not set."
 
 url = "https://openrouter.ai/api/v1/chat/completions"
 
