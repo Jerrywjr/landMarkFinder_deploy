@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>🏛️ LandMarkFinder - AI地标识别导览助手</title>
+<style>
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    font-family: "Inter", "Helvetica Neue", Arial, sans-serif;
+    background: linear-gradient(145deg, #e0f2fe, #f8fafc);
+    margin: 0;
+    padding: 20px;
+    min-height: 100vh;
+  }
+
+  .container {
+    display: flex;
+    max-width: 1200px;
+    margin: 0 auto;
+    gap: 30px;
+    height: calc(100vh - 40px);
+  }
+
+  .left-panel, .right-panel {
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(10px);
+    border-radius: 20px;
+    box-shadow: 0 10px 35px rgba(0, 0, 0, 0.1);
+    padding: 30px;
+  }
+
+  .left-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .right-panel {
+    flex: 1.5;
+    display: flex;
+    flex-direction: column;
+  }
+
+  h2 {
+    font-weight: 700;
+    color: #0f172a;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .subtitle {
+    color: #475569;
+    text-align: center;
+    margin-bottom: 30px;
+    font-size: 15px;
+  }
+
+  .upload-area {
+    width: 100%;
+    margin-bottom: 30px;
+  }
+
+  .file-input-container {
+    position: relative;
+    width: 100%;
+    height: 200px;
+    border: 3px dashed #cbd5e1;
+    border-radius: 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.3s;
+    background: #f8fafc;
+  }
+
+  .file-input-container:hover {
+    border-color: #3b82f6;
+    background: #f0f9ff;
+  }
+
+  .file-input-container.dragover {
+    border-color: #3b82f6;
+    background: #dbeafe;
+  }
+
+  .upload-icon {
+    font-size: 48px;
+    color: #94a3b8;
+    margin-bottom: 15px;
+  }
+
+  .upload-text {
+    color: #64748b;
+    font-size: 16px;
+    margin-bottom: 5px;
+  }
+
+  .upload-hint {
+    color: #94a3b8;
+    font-size: 14px;
+  }
+
+  input[type="file"] {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    cursor: pointer;
+  }
+
+  .button-group {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    width: 100%;
+  }
+
+  button {
+    width: 100%;
+    padding: 14px;
+    border: none;
+    border-radius: 12px;
+    font-size: 16px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+  }
+
+  .primary-btn {
+    background: linear-gradient(135deg, #3b82f6, #2563eb);
+    color: white;
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+  }
+
+  .primary-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 18px rgba(37, 99, 235, 0.35);
+  }
+
+  .secondary-btn {
+    background: #f1f5f9;
+    color: #475569;
+    border: 2px solid #e2e8f0;
+  }
+
+  .secondary-btn:hover {
+    background: #e2e8f0;
+  }
+
+  .preview-section {
+    width: 100%;
+    margin-top: 30px;
+    text-align: center;
+  }
+
+  .preview-title {
+    color: #475569;
+    font-size: 16px;
+    margin-bottom: 15px;
+    font-weight: 500;
+  }
+
+  #preview {
+    max-width: 100%;
+    max-height: 200px;
+    border-radius: 12px;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.08);
+    display: none;
+  }
+
+  .output-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+  }
+
+  .output-title {
+    color: #0f172a;
+    font-size: 18px;
+    font-weight: 600;
+  }
+
+  .output-actions {
+    display: flex;
+    gap: 10px;
+  }
+
+  .action-btn {
+    background: #f1f5f9;
+    border: none;
+    border-radius: 8px;
+    padding: 8px 15px;
+    cursor: pointer;
+    font-size: 14px;
+    color: #475569;
+    transition: all 0.2s;
+  }
+
+  .action-btn:hover {
+    background: #e2e8f0;
+  }
+
+  #output {
+    flex: 1;
+    border-radius: 12px;
+    padding: 20px;
+    border: none;
+    font-size: 15px;
+    line-height: 1.6;
+    color: #334155;
+    background: #f1f5f9;
+    white-space: pre-wrap;
+    overflow-y: auto;
+    font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+    min-height: 300px;
+  }
+
+  #output:empty::before {
+    content: "识别结果将在此显示...";
+    color: #94a3b8;
+    font-style: italic;
+  }
+
+  #loading {
+    display: none;
+    margin: 20px 0;
+    text-align: center;
+  }
+
+  .spinner {
+    border: 4px solid #e2e8f0;
+    border-top: 4px solid #3b82f6;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    animation: spin 1s linear infinite;
+    margin: 0 auto 15px;
+  }
+
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+
+  .loading-text {
+    color: #64748b;
+    font-size: 15px;
+  }
+
+  footer {
+    margin-top: 30px;
+    text-align: center;
+    font-size: 13px;
+    color: #94a3b8;
+  }
+
+  footer span {
+    background: #f1f5f9;
+    padding: 6px 12px;
+    border-radius: 12px;
+  }
+
+  @media (max-width: 768px) {
+    .container {
+      flex-direction: column;
+      height: auto;
+    }
+    
+    .left-panel, .right-panel {
+      width: 100%;
+    }
+  }
+</style>
+</head>
+<body>
+  <div class="container">
+    <!-- 左侧面板 -->
+    <div class="left-panel">
+      <h2>🏛️ <span>LandMarkFinder</span></h2>
+      <p class="subtitle">上传地标照片，AI生成中英文导览介绍</p>
+      
+      <!-- 上传区域 -->
+      <div class="upload-area">
+        <div class="file-input-container" id="dropArea">
+          <div class="upload-icon">📁</div>
+          <div class="upload-text">点击选择或拖拽图片到此区域</div>
+          <div class="upload-hint">支持 JPG、PNG 格式</div>
+          <input type="file" id="imageInput" accept="image/*">
+        </div>
+      </div>
+      
+      <!-- 按钮组 -->
+      <div class="button-group">
+        <button id="analyzeBtn" class="primary-btn">
+          <span>🔍</span> AI识别地标
+        </button>
+        <button id="speakBtn" class="secondary-btn" disabled>
+          <span>🔊</span> 语音播报
+        </button>
+        <button id="clearBtn" class="secondary-btn">
+          <span>🗑️</span> 清除内容
+        </button>
+      </div>
+      
+      <!-- 图片预览 -->
+      <div class="preview-section">
+        <div class="preview-title">图片预览</div>
+        <img id="preview" alt="预览图片" />
+      </div>
+      
+      <!-- 加载状态 -->
+      <div id="loading">
+        <div class="spinner"></div>
+        <p class="loading-text">AI 正在识别中，请稍候...</p>
+      </div>
+    </div>
+    
+    <!-- 右侧面板 -->
+    <div class="right-panel">
+      <div class="output-header">
+        <div class="output-title">📝 识别结果</div>
+        <div class="output-actions">
+          <button class="action-btn" id="copyBtn">📋 复制</button>
+          <button class="action-btn" id="saveBtn">💾 保存</button>
+        </div>
+      </div>
+      
+      <!-- 结果输出区域 -->
+      <div id="output"></div>
+    </div>
+  </div>
+
+  <footer>
+    <span>Powered by Ollama + LLaVA | Designed by Jerry</span>
+  </footer>
+
+  <script>
+    // 获取DOM元素
+    const imageInput = document.getElementById('imageInput');
+    const dropArea = document.getElementById('dropArea');
+    const analyzeBtn = document.getElementById('analyzeBtn');
+    const speakBtn = document.getElementById('speakBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const copyBtn = document.getElementById('copyBtn');
+    const saveBtn = document.getElementById('saveBtn');
+    const preview = document.getElementById('preview');
+    const output = document.getElementById('output');
+    const loading = document.getElementById('loading');
+    
+    // 语音合成相关
+    let isSpeaking = false;
+    
+    // 图片转Base64 - 简单直接
+    async function toBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(',')[1]);
+        reader.onerror = error => reject(error);
+        reader.readAsDataURL(file);
+      });
+    }
+    
+    // 文件拖放功能
+    dropArea.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropArea.classList.add('dragover');
+    });
+    
+    dropArea.addEventListener('dragleave', () => {
+      dropArea.classList.remove('dragover');
+    });
+    
+    dropArea.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropArea.classList.remove('dragover');
+      
+      if (e.dataTransfer.files.length) {
+        imageInput.files = e.dataTransfer.files;
+        handleImageSelect();
+      }
+    });
+    
+    // 图片选择处理
+    imageInput.addEventListener('change', handleImageSelect);
+    
+    function handleImageSelect() {
+      const file = imageInput.files[0];
+      if (!file) return;
+      
+      preview.src = URL.createObjectURL(file);
+      preview.style.display = 'block';
+      analyzeBtn.disabled = false;
+    }
+    
+    // AI分析图片 - 最简单的实现
+    analyzeBtn.onclick = async () => {
+      const file = imageInput.files[0];
+      if (!file) {
+        alert('请先选择一张图片！');
+        return;
+      }
+      
+      // 重置状态
+      output.textContent = '';
+      loading.style.display = 'block';
+      speakBtn.disabled = true;
+      analyzeBtn.disabled = true;
+      
+      try {
+        const base64 = await toBase64(file);
+        
+        console.log('发送请求到 Ollama...');
+        
+        // 使用简单直接的提示词
+        const prompt = `Please identify and describe this landmark or building in English. If this is not a landmark, only say 'it's not a landmark'.`;
+        
+        const response = await fetch('http://localhost:11434/api/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: 'llava',
+            prompt: prompt,
+            images: [base64],
+            stream: true,
+            options: {
+              temperature: 0.7,
+              num_predict: 400
+            }
+          })
+        });
+        
+        if (!response.ok) {
+          throw new Error(`HTTP错误: ${response.status}`);
+        }
+        
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let fullText = '';
+        
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          
+          const chunk = decoder.decode(value);
+          const lines = chunk.trim().split('\n');
+          
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            
+            try {
+              const json = JSON.parse(line);
+              if (json.response) {
+                fullText += json.response;
+                output.textContent = fullText;
+                output.scrollTop = output.scrollHeight;
+              }
+            } catch (e) {
+              console.log('解析行:', line);
+            }
+          }
+        }
+        
+        console.log('完成! 结果:', fullText);
+        
+        // 检查结果
+        if (fullText.toLowerCase().includes('not a landmark') || 
+            fullText.includes('不是地标') ||
+            fullText.length < 20) {
+          // 非地标图片
+          speakBtn.disabled = true;
+        } else {
+          // 成功识别
+          speakBtn.disabled = false;
+        }
+        
+      } catch (error) {
+        console.error('请求失败:', error);
+        output.textContent = `错误: ${error.message}\n\n请确保 Ollama 服务正在运行: ollama serve`;
+      } finally {
+        loading.style.display = 'none';
+        analyzeBtn.disabled = false;
+      }
+    };
+    
+    // 语音播报功能
+    speakBtn.onclick = () => {
+      const text = output.textContent;
+      if (!text.trim()) return;
+      
+      if (isSpeaking) {
+        window.speechSynthesis.cancel();
+        isSpeaking = false;
+        speakBtn.innerHTML = '<span>🔊</span> 语音播报';
+        return;
+      }
+      
+      // 获取可用语音
+      const voices = window.speechSynthesis.getVoices();
+      const chineseVoice = voices.find(v => v.lang === 'zh-CN') || 
+                          voices.find(v => v.lang.startsWith('zh'));
+      const englishVoice = voices.find(v => v.lang === 'en-US') || 
+                          voices.find(v => v.lang.startsWith('en'));
+      
+      // 分割文本
+      const sentences = text.split(/(?<=[。.!?\n])/).filter(s => s.trim().length > 0);
+      
+      if (sentences.length === 0) return;
+      
+      // 逐句播报
+      isSpeaking = true;
+      speakBtn.innerHTML = '<span>⏸️</span> 停止播报';
+      
+      let currentIndex = 0;
+      
+      function speakNext() {
+        if (currentIndex >= sentences.length) {
+          isSpeaking = false;
+          speakBtn.innerHTML = '<span>🔊</span> 语音播报';
+          return;
+        }
+        
+        const sentence = sentences[currentIndex].trim();
+        const utterance = new SpeechSynthesisUtterance(sentence);
+        
+        // 检测语言
+        const chineseChars = sentence.match(/[\u4e00-\u9fa5]/g);
+        const englishChars = sentence.match(/[a-zA-Z]/g);
+        
+        if (chineseChars && (!englishChars || chineseChars.length > englishChars.length)) {
+          // 主要是中文
+          utterance.lang = 'zh-CN';
+          utterance.voice = chineseVoice || voices[0];
+          utterance.rate = 0.85;
+        } else if (englishChars && (!chineseChars || englishChars.length > chineseChars.length)) {
+          // 主要是英文
+          utterance.lang = 'en-US';
+          utterance.voice = englishVoice || voices[0];
+          utterance.rate = 0.9;
+        } else {
+          // 混合或不确定，默认中文
+          utterance.lang = 'zh-CN';
+          utterance.voice = chineseVoice || voices[0];
+          utterance.rate = 0.85;
+        }
+        
+        utterance.onend = () => {
+          currentIndex++;
+          setTimeout(speakNext, 300);
+        };
+        
+        utterance.onerror = () => {
+          currentIndex++;
+          setTimeout(speakNext, 300);
+        };
+        
+        window.speechSynthesis.speak(utterance);
+      }
+      
+      speakNext();
+    };
+    
+    // 清除内容
+    clearBtn.onclick = () => {
+      output.textContent = '';
+      speakBtn.disabled = true;
+      speakBtn.innerHTML = '<span>🔊</span> 语音播报';
+      
+      if (isSpeaking) {
+        window.speechSynthesis.cancel();
+        isSpeaking = false;
+      }
+    };
+    
+    // 复制结果
+    copyBtn.onclick = () => {
+      const text = output.textContent;
+      if (!text.trim()) return;
+      
+      navigator.clipboard.writeText(text).then(() => {
+        const originalText = copyBtn.textContent;
+        copyBtn.textContent = '✓ 已复制';
+        setTimeout(() => {
+          copyBtn.textContent = originalText;
+        }, 2000);
+      }).catch(err => {
+        console.error('复制失败:', err);
+        alert('复制失败，请手动选择文本复制');
+      });
+    };
+    
+    // 保存结果
+    saveBtn.onclick = () => {
+      const text = output.textContent;
+      if (!text.trim()) return;
+      
+      const blob = new Blob([text], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `LandMarkFinder_结果_${new Date().toISOString().slice(0, 10)}.txt`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      const originalText = saveBtn.textContent;
+      saveBtn.textContent = '✓ 已保存';
+      setTimeout(() => {
+        saveBtn.textContent = originalText;
+      }, 2000);
+    };
+    
+    // 初始化
+    analyzeBtn.disabled = true;
+    
+    // 检查Ollama服务
+    async function checkOllamaService() {
+      try {
+        const response = await fetch('http://localhost:11434/api/tags', {
+          method: 'GET'
+        });
+        
+        if (response.ok) {
+          console.log('✅ Ollama服务连接正常');
+        } else {
+          console.warn('⚠️ Ollama服务异常');
+        }
+      } catch (error) {
+        console.warn('无法连接到Ollama服务，请运行: ollama serve');
+      }
+    }
+    
+    // 页面加载时检查服务
+    window.addEventListener('load', checkOllamaService);
+  </script>
+</body>
+</html>
