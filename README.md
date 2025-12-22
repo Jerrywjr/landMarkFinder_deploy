@@ -1,5 +1,51 @@
 # 🌍 Landmark Finder (ISE_LandMarkFinder)
 
+This is a landmark recognition website developed using **Streamlit**. Users can upload photos of buildings or attractions, and an AI will automatically identify them and provide a brief description.
+
+👉 **Live Demo Address:**  
+https://202511iselandmarkfinder‑rm6fwkkitlryewpyxztspk.streamlit.app/ (Online)
+
+---
+
+## 🧠 Project Introduction
+
+This project uses the multimodal large language model provided by OpenRouter (such as `qwen/qwen‑2.5‑vl‑7b‑instruct:free`) to identify the content of images uploaded by users, determine the landmark buildings in the images, and return the location and a brief introduction.  
+It is suitable for quickly building an AI-assisted image recognition demo or travel-related websites.
+
+---
+
+## 🚀 Main Features
+
+✅ Supports uploading images for landmark recognition  
+✅ Returns the name of the building/attraction  
+✅ Returns the location (city/country)  
+✅ Provides a brief 3-4 sentence introduction  
+✅ Automatically deploys to Streamlit Cloud, no backend server required
+
+---
+
+## 📦 Tech Stack
+
+| Technology | Purpose |
+|------------|---------|
+| 🧪 Python | Core language |
+| 🖥️ Streamlit | Web interface |
+| 🧠 OpenRouter API | Calls the large language model for image recognition |
+| 📡 Streamlit Cloud | Deployment & hosting |
+
+---
+
+## 💻 Local Run Guide
+
+### 1️⃣ Clone the Repository
+
+```bash
+git clone https://github.com/<your-username>/<your-repository>.git
+cd <your-repository>
+```
+
+# 🌍 Landmark Finder (ISE_LandMarkFinder)
+
 这是一个使用 **Streamlit** 开发的地标识别网站，用户可以上传建筑/景点照片，AI 自动识别并给出简短描述。
 
 👉 **在线演示地址：**  
