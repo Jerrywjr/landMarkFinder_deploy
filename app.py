@@ -58,24 +58,25 @@ def call_openrouter(image_base64: str) -> str:
         "If you are not confident, clearly say so and explain why."
     )
 
-    payload = {
-        "model": "nex-agi/DeepSeek-V3.1-Nex-N1",
-        "messages": [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/png;base64,{image_base64}"
-                        }
+   payload = {
+    "model": "qwen/qwen-2.5-vl-7b-instruct:free",
+    "messages": [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "Identify the landmark in this image and give a short introduction."},
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/png;base64,{image_base64}"
                     }
-                ]
-            }
-        ],
-        "temperature": 0.2
-    }
+                }
+            ]
+        }
+    ],
+    "temperature": 0.2
+}
+
 
     try:
         response = requests.post(
