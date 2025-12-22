@@ -19,6 +19,11 @@ st.title("🌍 Landmark Recognition")
 st.caption("Upload a photo and let AI tell you where it is.")
 
 # -----------------------------
+# Language Selection
+# -----------------------------
+lang = st.radio("Select Language / 选择语言", ["English", "中文"])
+
+# -----------------------------
 # Helper Functions
 # -----------------------------
 def image_to_base64(image: Image.Image) -> str:
@@ -30,9 +35,9 @@ def image_to_base64(image: Image.Image) -> str:
     return base64.b64encode(buffer.getvalue()).decode("utf-8")
 
 
-def call_openrouter(image_base64: str) -> str:
+def call_openrouter(image_base64: str, language: str) -> str:
     """
-    Call OpenRouter API with DeepSeek V3.1 Nex N1
+    Call OpenRouter API with multi-modal Qwen model
     """
     api_key = os.getenv("OPENROUTER_API_KEY")
     if not api_key:
@@ -43,20 +48,30 @@ def call_openrouter(image_base64: str) -> str:
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
-        # These two headers are recommended by OpenRouter
         "HTTP-Referer": "https://streamlit.io",
         "X-Title": "Landmark Recognition App"
     }
 
-    prompt = (
-        "You are a professional travel guide.\n\n"
-        "Identify the landmark in the image.\n"
-        "If identifiable, respond exactly in this format:\n\n"
-        "Name:\n"
-        "City, Country:\n"
-        "Brief introduction (3–4 sentences):\n\n"
-        "If you are not confident, clearly say so and explain why."
-    )
+    if language == "English":
+        prompt = (
+            "You are a professional travel guide.\n\n"
+            "Identify the landmark in the image.\n"
+            "If identifiable, respond exactly in this format:\n\n"
+            "Name:\n"
+            "City, Country:\n"
+            "Brief introduction (3–4 sentences):\n\n"
+            "If you are not confident, clearly say so and explain why."
+        )
+    else:  # 中文
+        prompt = (
+            "你是专业的旅游向导。\n\n"
+            "请识别图片中的地标建筑。\n"
+            "如果可以识别，请严格按照以下格式回复：\n\n"
+            "名称：\n"
+            "城市，国家：\n"
+            "简短介绍（3–4句话）：\n\n"
+            "如果不确定，请说明原因。"
+        )
 
     payload = {
         "model": "qwen/qwen-2.5-vl-7b-instruct:free",
@@ -110,10 +125,23 @@ if uploaded_file:
     if st.button("🔍 Identify Landmark"):
         with st.spinner("Analyzing image..."):
             img_b64 = image_to_base64(image)
-            result = call_openrouter(img_b64)
+            result = call_openrouter(img_b64, lang)
 
         st.subheader("🧭 Result")
         st.write(result)
 
+        # -----------------------------
+        # Text-to-Speech
+        # -----------------------------
+        tts_text = result.replace("\n", " ")
+        tts_code = f"""
+        <script>
+        var msg = new SpeechSynthesisUtterance("{tts_text}");
+        msg.lang = "{'en-US' if lang=='English' else 'zh-CN'}";
+        window.speechSynthesis.speak(msg);
+        </script>
+        """
+        st.components.v1.html(tts_code, height=0)
+
 else:
-    st.info("Please upload an image to begin.")
+    st.info("Please upload an image to begin." if lang=="English" else "请上传图片开始识别。")
