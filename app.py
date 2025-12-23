@@ -134,25 +134,27 @@ def call_text_model(name, lang):
 
 def parse_result(text):
     """
-    从模型输出中提取名称、位置、简介，避免重复显示
+    从模型输出中提取名称、位置、简介，并移除重复标签
     """
+    # 提取 Name / Location
     name_match = re.search(r"(名称|Name)[:：]\s*(.*)", text)
     location_match = re.search(r"(位置|Location|City|Country)[:：]\s*(.*)", text)
 
-    name = name_match.group(2).strip() if name_match else None
-    location = location_match.group(2).strip() if location_match else None
+    name = name_match.group(2).strip() if name_match else "—"
+    location = location_match.group(2).strip() if location_match else "—"
 
-    # 去掉原始文本中的标签
+    # 去掉 Name/Location 标签及内容
     intro = text
-    if name:
-        intro = re.sub(r"(名称|Name)[:：].*", "", intro)
-    if location:
-        intro = re.sub(r"(位置|Location|City|Country)[:：].*", "", intro)
+    intro = re.sub(r"(名称|Name)[:：].*\n?", "", intro)
+    intro = re.sub(r"(位置|Location|City|Country)[:：].*\n?", "", intro)
+    # 去掉 Introduction: 或 简介:
+    intro = re.sub(r"(Introduction|简介)[:：]\s*", "", intro)
     intro = intro.strip()
+
     if not intro:
         intro = text  # fallback
 
-    return {"name": name or "—", "location": location or "—", "intro": intro}
+    return {"name": name, "location": location, "intro": intro}
 
 
 # -----------------------------
