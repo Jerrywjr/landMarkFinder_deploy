@@ -4,6 +4,7 @@ from PIL import Image
 import base64
 import io
 import os
+import re
 
 # -----------------------------
 # Page Config
@@ -30,8 +31,9 @@ UI = {
         "confirm": "✅ Confirm",
         "placeholder": "Eiffel Tower",
         "waiting": "Result will appear here.",
-        "start_speech": "🔊 Start Reading",
-        "stop_speech": "⏹ Stop Reading"
+        "name": "Name",
+        "location": "Location",
+        "intro": "Introduction"
     },
     "中文": {
         "title": "🌍 地标识别系统",
@@ -45,15 +47,16 @@ UI = {
         "confirm": "✅ 确认",
         "placeholder": "埃菲尔铁塔",
         "waiting": "结果将在此显示。",
-        "start_speech": "🔊 开始朗读",
-        "stop_speech": "⏹ 停止朗读"
+        "name": "名称",
+        "location": "位置",
+        "intro": "简介"
     }
 }
 
 # -----------------------------
 # Session State
 # -----------------------------
-for k in ["result", "vl_failed"]:
+for k in ["result", "vl_failed", "parsed"]:
     if k not in st.session_state:
         st.session_state[k] = None
 
@@ -71,9 +74,9 @@ def call_vl_model(image_b64, lang):
     url = "https://openrouter.ai/api/v1/chat/completions"
 
     prompt = (
-        "Identify the landmark in the image and give a detailed introduction."
+        "Identify the landmark in the image.\nReturn Name, City, Country, and a short introduction."
         if lang == "English"
-        else "识别图片中的地标建筑，并给出详细介绍。"
+        else "识别图片中的地标建筑，返回名称、城市、国家和简要介绍。"
     )
 
     payload = {
@@ -108,9 +111,9 @@ def call_text_model(name, lang):
     url = "https://openrouter.ai/api/v1/chat/completions"
 
     prompt = (
-        f"Introduce the landmark {name} in one paragraph."
+        f"Introduce the landmark {name}.\nReturn name, location and introduction."
         if lang == "English"
-        else f"请用中文介绍地标建筑{name}，一段文字描述。"
+        else f"请介绍地标建筑{name}，返回名称、位置和简介。"
     )
 
     payload = {
@@ -129,40 +132,52 @@ def call_text_model(name, lang):
     return r.json()["choices"][0]["message"]["content"]
 
 
-def render_tts_controls(text, lang):
-    """Render front-end start/stop speech buttons with JS"""
-    st.markdown(f"""
-    <div style="margin-top:10px;">
-        <button onclick="
-            window.speechSynthesis.cancel();
-            var msg = new SpeechSynthesisUtterance(`{text}`);
-            msg.lang = '{'en-US' if lang=='English' else 'zh-CN'}';
-            speechSynthesis.speak(msg);
-        " style="margin-right:10px;">{UI[lang]['start_speech']}</button>
+def parse_result(text):
+    """
+    从模型输出中提取名称、位置、简介，避免重复显示
+    """
+    name_match = re.search(r"(名称|Name)[:：]\s*(.*)", text)
+    location_match = re.search(r"(位置|Location|City|Country)[:：]\s*(.*)", text)
 
-        <button onclick="window.speechSynthesis.cancel();">{UI[lang]['stop_speech']}</button>
-    </div>
-    """, unsafe_allow_html=True)
+    name = name_match.group(2).strip() if name_match else None
+    location = location_match.group(2).strip() if location_match else None
+
+    # 去掉原始文本中的标签
+    intro = text
+    if name:
+        intro = re.sub(r"(名称|Name)[:：].*", "", intro)
+    if location:
+        intro = re.sub(r"(位置|Location|City|Country)[:：].*", "", intro)
+    intro = intro.strip()
+    if not intro:
+        intro = text  # fallback
+
+    return {"name": name or "—", "location": location or "—", "intro": intro}
+
 
 # -----------------------------
 # Layout
 # -----------------------------
 left, right = st.columns([1, 1.3])
-lang = st.radio("Language / 语言", ["English", "中文"])
-T = UI[lang]
 
 # ---------- LEFT ----------
 with left:
+    lang = st.radio("Language / 语言", ["English", "中文"])
+    T = UI[lang]
     st.subheader(T["input"])
+
     uploaded = st.file_uploader(T["upload"], type=["jpg", "jpeg", "png"])
 
     if uploaded:
         image = Image.open(uploaded).convert("RGB")
         b64 = image_to_base64(image)
+
+        # 图片预览固定高度
         st.markdown(
             f"""
             <img src="data:image/png;base64,{b64}"
-                 style="max-height:240px; max-width:100%; object-fit:contain;
+                 style="max-height:240px; max-width:100%;
+                        object-fit:contain;
                         border-radius:8px;" />
             """,
             unsafe_allow_html=True
@@ -170,39 +185,59 @@ with left:
 
         if st.button(T["identify"]):
             try:
-                result_text = call_vl_model(b64, lang)
-                st.session_state.result = result_text
+                raw = call_vl_model(b64, lang)
+                st.session_state.result = raw
+                st.session_state.parsed = parse_result(raw)
                 st.session_state.vl_failed = False
-            except:
+            except Exception:
                 st.session_state.vl_failed = True
                 st.session_state.result = None
 
     if st.session_state.vl_failed:
         st.warning(T["busy"])
-        manual = st.text_input(T["manual"], placeholder=T["placeholder"])
-        if st.button(T["confirm"]) and manual:
-            result_text = call_text_model(manual, lang)
-            st.session_state.result = result_text
+        manual_name = st.text_input(T["manual"], placeholder=T["placeholder"])
+        if st.button(T["confirm"]) and manual_name:
+            raw = call_text_model(manual_name, lang)
+            st.session_state.result = raw
+            st.session_state.parsed = parse_result(raw)
 
 # ---------- RIGHT ----------
 with right:
     st.subheader(T["result"])
-    if st.session_state.result:
-        result_text = st.session_state.result.strip()
+
+    if st.session_state.parsed:
+        p = st.session_state.parsed
         st.markdown(
             f"""
             <div style="
                 padding:16px;
                 border-radius:12px;
                 background:rgba(128,128,128,0.08);
-                white-space:pre-wrap;
             ">
-                {result_text}
+                <h4>{T['name']}</h4>
+                <p>{p['name']}</p>
+
+                <h4>{T['location']}</h4>
+                <p>{p['location']}</p>
+
+                <h4>{T['intro']}</h4>
+                <p>{p['intro']}</p>
             </div>
             """,
             unsafe_allow_html=True
         )
-        # TTS controls
-        render_tts_controls(result_text, lang)
+
+        # TTS
+        tts = p["intro"].replace("\n", " ")
+        st.components.v1.html(
+            f"""
+            <script>
+            var msg = new SpeechSynthesisUtterance("{tts}");
+            msg.lang = "{'en-US' if lang=='English' else 'zh-CN'}";
+            speechSynthesis.speak(msg);
+            </script>
+            """,
+            height=0
+        )
     else:
         st.info(T["waiting"])
