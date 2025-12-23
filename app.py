@@ -14,16 +14,43 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("🌍 Landmark Recognition")
+# -----------------------------
+# UI Text (i18n)
+# -----------------------------
+UI = {
+    "English": {
+        "title": "🌍 Landmark Recognition",
+        "input": "📷 Input",
+        "upload": "Upload an image",
+        "identify": "🔍 Identify Landmark",
+        "result": "🧭 Result",
+        "preview": "Image Preview",
+        "busy": "Image recognition service is busy.",
+        "manual": "Enter landmark name manually",
+        "placeholder": "Eiffel Tower",
+        "waiting": "Result will appear here."
+    },
+    "中文": {
+        "title": "🌍 地标识别系统",
+        "input": "📷 输入",
+        "upload": "上传图片",
+        "identify": "🔍 识别地标",
+        "result": "🧭 识别结果",
+        "preview": "图片预览",
+        "busy": "图像识别服务繁忙",
+        "manual": "手动输入地标名称",
+        "placeholder": "埃菲尔铁塔",
+        "waiting": "结果将在此显示。"
+    }
+}
 
 # -----------------------------
 # Session State
 # -----------------------------
-if "vl_failed" not in st.session_state:
-    st.session_state.vl_failed = False
-
 if "result" not in st.session_state:
     st.session_state.result = ""
+if "vl_failed" not in st.session_state:
+    st.session_state.vl_failed = False
 
 # -----------------------------
 # Helper Functions
@@ -34,21 +61,15 @@ def image_to_base64(image: Image.Image) -> str:
     return base64.b64encode(buf.getvalue()).decode()
 
 
-def call_vl_model(image_b64, language):
+def call_vl_model(image_b64, lang):
     api_key = os.getenv("OPENROUTER_API_KEY")
     url = "https://openrouter.ai/api/v1/chat/completions"
 
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
-    }
-
     prompt = (
-        "Identify the landmark in the image.\n"
-        "Return name, city, country and a short introduction."
-        if language == "English"
+        "Identify the landmark in the image and give a short introduction."
+        if lang == "English"
         else
-        "识别图片中的地标建筑，并给出名称、城市、国家和简要介绍。"
+        "识别图片中的地标建筑并给出简要介绍。"
     )
 
     payload = {
@@ -68,18 +89,23 @@ def call_vl_model(image_b64, language):
         "temperature": 0.2
     }
 
-    r = requests.post(url, headers=headers, json=payload, timeout=60)
+    r = requests.post(
+        url,
+        headers={"Authorization": f"Bearer {api_key}"},
+        json=payload,
+        timeout=60
+    )
     r.raise_for_status()
     return r.json()["choices"][0]["message"]["content"]
 
 
-def call_text_model(name, language):
+def call_text_model(name, lang):
     api_key = os.getenv("OPENROUTER_API_KEY")
     url = "https://openrouter.ai/api/v1/chat/completions"
 
     prompt = (
         f"Introduce the landmark {name} in 4 sentences."
-        if language == "English"
+        if lang == "English"
         else
         f"请用中文介绍地标建筑 {name}，约4句话。"
     )
@@ -102,54 +128,55 @@ def call_text_model(name, language):
 # -----------------------------
 # Layout
 # -----------------------------
-left, right = st.columns([1, 1.2])
+left, right = st.columns([1, 1.3])
 
-# ========== LEFT ==========
+# ---------- LEFT ----------
 with left:
-    st.subheader("📷 Input")
-
     lang = st.radio("Language / 语言", ["English", "中文"])
+    T = UI[lang]
 
-    uploaded_file = st.file_uploader(
-        "Upload an image",
-        type=["jpg", "jpeg", "png"]
-    )
+    st.subheader(T["input"])
+    uploaded = st.file_uploader(T["upload"], type=["jpg", "jpeg", "png"])
 
-    if uploaded_file:
-        image = Image.open(uploaded_file).convert("RGB")
-        st.image(image, caption="Preview", use_container_width=True)
+    if uploaded:
+        image = Image.open(uploaded).convert("RGB")
 
-        if st.button("🔍 Identify Landmark"):
-            with st.spinner("Analyzing image..."):
-                try:
-                    img_b64 = image_to_base64(image)
-                    st.session_state.result = call_vl_model(img_b64, lang)
-                    st.session_state.vl_failed = False
-                except Exception:
-                    st.session_state.vl_failed = True
-                    st.session_state.result = ""
-
-    if st.session_state.vl_failed:
-        st.warning("Image recognition unavailable. Enter landmark manually:")
-        landmark_name = st.text_input(
-            "Landmark name",
-            placeholder="Eiffel Tower / 埃菲尔铁塔"
+        # Fixed-size image preview
+        st.markdown(
+            f"""
+            <div style="text-align:center;">
+                <img src="data:image/png;base64,{image_to_base64(image)}"
+                     style="max-height:260px; max-width:100%; object-fit:contain;" />
+                <div style="font-size:0.85em; color:gray;">{T["preview"]}</div>
+            </div>
+            """,
+            unsafe_allow_html=True
         )
 
-        if landmark_name:
-            with st.spinner("Generating introduction..."):
-                st.session_state.result = call_text_model(
-                    landmark_name, lang
+        if st.button(T["identify"]):
+            try:
+                st.session_state.result = call_vl_model(
+                    image_to_base64(image), lang
                 )
+                st.session_state.vl_failed = False
+            except Exception:
+                st.session_state.vl_failed = True
+                st.session_state.result = ""
 
-# ========== RIGHT ==========
+    if st.session_state.vl_failed:
+        st.warning(T["busy"])
+        name = st.text_input(T["manual"], placeholder=T["placeholder"])
+        if name:
+            st.session_state.result = call_text_model(name, lang)
+
+# ---------- RIGHT ----------
 with right:
-    st.subheader("🧭 Result")
+    st.subheader(T["result"])
 
     if st.session_state.result:
         st.write(st.session_state.result)
 
-        # ---- TTS ----
+        # TTS
         tts = st.session_state.result.replace("\n", " ")
         st.components.v1.html(
             f"""
@@ -162,4 +189,4 @@ with right:
             height=0
         )
     else:
-        st.info("Result will appear here." if lang == "English" else "结果将在此显示。")
+        st.info(T["waiting"])
