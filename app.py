@@ -37,9 +37,6 @@ def image_to_base64(image: Image.Image) -> str:
 
 
 def call_openrouter(image_base64: str, language: str) -> str:
-    """
-    Call OpenRouter API with multi-modal Qwen model
-    """
     api_key = os.getenv("OPENROUTER_API_KEY")
     if not api_key:
         return "❌ OPENROUTER_API_KEY is not set."
@@ -53,26 +50,33 @@ def call_openrouter(image_base64: str, language: str) -> str:
         "X-Title": "Landmark Recognition App"
     }
 
-    if language == "English":
-        prompt = (
-            "You are a professional travel guide.\n\n"
-            "Identify the landmark in the image.\n"
-            "If identifiable, respond exactly in this format:\n\n"
-            "Name:\n"
-            "City, Country:\n"
-            "Brief introduction (3–4 sentences):\n\n"
-            "If you are not confident, clearly say so and explain why."
-        )
-    else:  # 中文
-        prompt = (
-            "你是专业的旅游向导。\n\n"
-            "请识别图片中的地标建筑。\n"
-            "如果可以识别，请严格按照以下格式回复：\n\n"
-            "名称：\n"
-            "城市，国家：\n"
-            "简短介绍（3–4句话）：\n\n"
-            "如果不确定，请说明原因。"
-        )
+    prompt = (
+        "Identify the landmark in the image and briefly introduce it."
+        if language == "English"
+        else "请识别图片中的地标并做简要介绍。"
+    )
+
+    payload = {
+        "model": "qwen/qwen-2.5-vl-7b-instruct:free",
+        "messages": [{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": prompt},
+                {"type": "image_url",
+                 "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}}
+            ]
+        }],
+        "temperature": 0.2
+    }
+
+    for attempt in range(2):
+        try:
+            response = requests.post(url, headers=headers, json=payload, timeout=60)
+            response.raise_for_status()
+            return response.json()["choices"][0]["message"]["content"]
+        except requests.exceptions.RequestException:
+            if attempt == 1:
+                return "❌ The AI service is temporarily unavailable. Please try again later."
 
     payload = {
         "model": "qwen/qwen-2.5-vl-7b-instruct:free",
