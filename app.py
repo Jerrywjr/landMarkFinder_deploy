@@ -36,15 +36,11 @@ def image_to_base64(image: Image.Image) -> str:
 
 
 def call_openrouter(image_base64: str, language: str) -> str:
-    """
-    Call OpenRouter API with multi-modal Qwen model
-    """
     api_key = os.getenv("OPENROUTER_API_KEY")
     if not api_key:
         return "❌ OPENROUTER_API_KEY is not set."
 
     url = "https://openrouter.ai/api/v1/chat/completions"
-
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
@@ -53,25 +49,9 @@ def call_openrouter(image_base64: str, language: str) -> str:
     }
 
     if language == "English":
-        prompt = (
-            "You are a professional travel guide.\n\n"
-            "Identify the landmark in the image.\n"
-            "If identifiable, respond exactly in this format:\n\n"
-            "Name:\n"
-            "City, Country:\n"
-            "Brief introduction (3–4 sentences):\n\n"
-            "If you are not confident, clearly say so and explain why."
-        )
-    else:  # 中文
-        prompt = (
-            "你是专业的旅游向导。\n\n"
-            "请识别图片中的地标建筑。\n"
-            "如果可以识别，请严格按照以下格式回复：\n\n"
-            "名称：\n"
-            "城市，国家：\n"
-            "简短介绍（3–4句话）：\n\n"
-            "如果不确定，请说明原因。"
-        )
+        prompt = "Identify the landmark in the image and give a short introduction."
+    else:
+        prompt = "识别图片中的地标建筑并给出简要介绍。"
 
     payload = {
         "model": "qwen/qwen-2.5-vl-7b-instruct:free",
@@ -92,22 +72,19 @@ def call_openrouter(image_base64: str, language: str) -> str:
         "temperature": 0.2
     }
 
-    try:
-        response = requests.post(
-            url,
-            headers=headers,
-            json=payload,
-            timeout=60
-        )
-        response.raise_for_status()
-        data = response.json()
-        return data["choices"][0]["message"]["content"]
+    for attempt in range(3):  # 👈 自动重试 3 次
+        try:
+            response = requests.post(url, headers=headers, json=payload, timeout=90)
+            response.raise_for_status()
+            return response.json()["choices"][0]["message"]["content"]
 
-    except requests.exceptions.RequestException as e:
-        return f"❌ API request failed:\n{e}"
+        except requests.exceptions.HTTPError as e:
+            if response.status_code == 502:
+                continue  # 重试
+            return f"❌ API error: {e}"
 
-    except (KeyError, json.JSONDecodeError):
-        return "❌ Unexpected response format from model."
+    return "⚠️ Image model is temporarily unavailable. Please try again later."
+
 
 
 # -----------------------------
