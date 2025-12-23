@@ -7,7 +7,7 @@ import os
 import json
 
 # -----------------------------
-# Streamlit Page Config
+# Page Config
 # -----------------------------
 st.set_page_config(
     page_title="Landmark Recognition",
@@ -21,104 +21,133 @@ st.caption("Upload a photo and let AI tell you where it is.")
 # -----------------------------
 # Language Selection
 # -----------------------------
-lang = st.radio("Select Language / 选择语言", ["English", "中文"])
+lang = st.radio("Language / 语言", ["English", "中文"])
 
 # -----------------------------
 # Helper Functions
 # -----------------------------
 def image_to_base64(image: Image.Image) -> str:
-    """
-    Convert PIL Image to base64 string
-    """
     buffer = io.BytesIO()
     image.save(buffer, format="PNG")
-    return base64.b64encode(buffer.getvalue()).decode("utf-8")
+    return base64.b64encode(buffer.getvalue()).decode()
 
 
-def call_openrouter(image_base64: str, language: str) -> str:
+# ---------- VL Model ----------
+def call_vl_model(image_b64: str, language: str):
     api_key = os.getenv("OPENROUTER_API_KEY")
-    if not api_key:
-        return "❌ OPENROUTER_API_KEY is not set."
-
     url = "https://openrouter.ai/api/v1/chat/completions"
+
     headers = {
         "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://streamlit.io",
-        "X-Title": "Landmark Recognition App"
+        "Content-Type": "application/json"
     }
 
     if language == "English":
-        prompt = "Identify the landmark in the image and give a short introduction."
+        prompt = (
+            "Identify the landmark in the image.\n"
+            "Return:\n"
+            "Name:\nCity, Country:\nBrief introduction (3–4 sentences)."
+        )
     else:
-        prompt = "识别图片中的地标建筑并给出简要介绍。"
+        prompt = (
+            "识别图片中的地标建筑。\n"
+            "返回格式：\n"
+            "名称：\n城市，国家：\n简要介绍（3–4句话）。"
+        )
 
     payload = {
         "model": "qwen/qwen-2.5-vl-7b-instruct:free",
-        "messages": [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/png;base64,{image_base64}"
-                        }
+        "messages": [{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": prompt},
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/png;base64,{image_b64}"
                     }
-                ]
-            }
-        ],
+                }
+            ]
+        }],
         "temperature": 0.2
     }
 
-    for attempt in range(3):  # 👈 自动重试 3 次
-        try:
-            response = requests.post(url, headers=headers, json=payload, timeout=90)
-            response.raise_for_status()
-            return response.json()["choices"][0]["message"]["content"]
+    response = requests.post(url, headers=headers, json=payload, timeout=60)
+    response.raise_for_status()
+    return response.json()["choices"][0]["message"]["content"]
 
-        except requests.exceptions.HTTPError as e:
-            if response.status_code == 502:
-                continue  # 重试
-            return f"❌ API error: {e}"
 
-    return "⚠️ Image model is temporarily unavailable. Please try again later."
+# ---------- Text Model ----------
+def call_text_model(landmark_name: str, language: str):
+    api_key = os.getenv("OPENROUTER_API_KEY")
+    url = "https://openrouter.ai/api/v1/chat/completions"
 
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+
+    if language == "English":
+        prompt = f"Introduce the landmark {landmark_name} in 4 sentences."
+    else:
+        prompt = f"请用中文介绍地标建筑 {landmark_name}，约4句话。"
+
+    payload = {
+        "model": "xiaomi/mimo-v2-flash:free",
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.3
+    }
+
+    response = requests.post(url, headers=headers, json=payload, timeout=30)
+    response.raise_for_status()
+    return response.json()["choices"][0]["message"]["content"]
 
 
 # -----------------------------
 # UI
 # -----------------------------
 uploaded_file = st.file_uploader(
-    "📷 Upload a landmark image",
+    "📷 Upload an image / 上传图片",
     type=["jpg", "jpeg", "png"]
 )
 
 if uploaded_file:
     image = Image.open(uploaded_file).convert("RGB")
-    st.image(image, caption="Uploaded Image", use_container_width=True)
+    st.image(image, use_container_width=True)
 
-    if st.button("🔍 Identify Landmark"):
+    if st.button("🔍 Identify"):
         with st.spinner("Analyzing image..."):
-            img_b64 = image_to_base64(image)
-            result = call_openrouter(img_b64, lang)
+            try:
+                img_b64 = image_to_base64(image)
+                result = call_vl_model(img_b64, lang)
+                st.subheader("🧭 Result")
+                st.write(result)
 
-        st.subheader("🧭 Result")
-        st.write(result)
+                # ---- TTS ----
+                tts = result.replace("\n", " ")
+                st.components.v1.html(
+                    f"""
+                    <script>
+                    var msg = new SpeechSynthesisUtterance("{tts}");
+                    msg.lang = "{'en-US' if lang=='English' else 'zh-CN'}";
+                    speechSynthesis.speak(msg);
+                    </script>
+                    """,
+                    height=0
+                )
 
-        # -----------------------------
-        # Text-to-Speech
-        # -----------------------------
-        tts_text = result.replace("\n", " ")
-        tts_code = f"""
-        <script>
-        var msg = new SpeechSynthesisUtterance("{tts_text}");
-        msg.lang = "{'en-US' if lang=='English' else 'zh-CN'}";
-        window.speechSynthesis.speak(msg);
-        </script>
-        """
-        st.components.v1.html(tts_code, height=0)
+            except Exception:
+                st.warning("⚠️ Image recognition service is busy.")
+
+                landmark = st.text_input(
+                    "Enter landmark name manually:",
+                    placeholder="Eiffel Tower / 埃菲尔铁塔"
+                )
+
+                if landmark:
+                    intro = call_text_model(landmark, lang)
+                    st.subheader("🧭 Result")
+                    st.write(intro)
 
 else:
-    st.info("Please upload an image to begin." if lang=="English" else "请上传图片开始识别。")
+    st.info("Please upload an image." if lang == "English" else "请上传图片。")
