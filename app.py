@@ -4,7 +4,6 @@ from PIL import Image
 import base64
 import io
 import os
-import json
 
 # -----------------------------
 # Page Config
@@ -12,28 +11,30 @@ import json
 st.set_page_config(
     page_title="Landmark Recognition",
     page_icon="🌍",
-    layout="centered"
+    layout="wide"
 )
 
 st.title("🌍 Landmark Recognition")
-st.caption("Upload a photo and let AI tell you where it is.")
 
 # -----------------------------
-# Language Selection
+# Session State
 # -----------------------------
-lang = st.radio("Language / 语言", ["English", "中文"])
+if "vl_failed" not in st.session_state:
+    st.session_state.vl_failed = False
+
+if "result" not in st.session_state:
+    st.session_state.result = ""
 
 # -----------------------------
 # Helper Functions
 # -----------------------------
 def image_to_base64(image: Image.Image) -> str:
-    buffer = io.BytesIO()
-    image.save(buffer, format="PNG")
-    return base64.b64encode(buffer.getvalue()).decode()
+    buf = io.BytesIO()
+    image.save(buf, format="PNG")
+    return base64.b64encode(buf.getvalue()).decode()
 
 
-# ---------- VL Model ----------
-def call_vl_model(image_b64: str, language: str):
+def call_vl_model(image_b64, language):
     api_key = os.getenv("OPENROUTER_API_KEY")
     url = "https://openrouter.ai/api/v1/chat/completions"
 
@@ -42,18 +43,13 @@ def call_vl_model(image_b64: str, language: str):
         "Content-Type": "application/json"
     }
 
-    if language == "English":
-        prompt = (
-            "Identify the landmark in the image.\n"
-            "Return:\n"
-            "Name:\nCity, Country:\nBrief introduction (3–4 sentences)."
-        )
-    else:
-        prompt = (
-            "识别图片中的地标建筑。\n"
-            "返回格式：\n"
-            "名称：\n城市，国家：\n简要介绍（3–4句话）。"
-        )
+    prompt = (
+        "Identify the landmark in the image.\n"
+        "Return name, city, country and a short introduction."
+        if language == "English"
+        else
+        "识别图片中的地标建筑，并给出名称、城市、国家和简要介绍。"
+    )
 
     payload = {
         "model": "qwen/qwen-2.5-vl-7b-instruct:free",
@@ -72,25 +68,21 @@ def call_vl_model(image_b64: str, language: str):
         "temperature": 0.2
     }
 
-    response = requests.post(url, headers=headers, json=payload, timeout=60)
-    response.raise_for_status()
-    return response.json()["choices"][0]["message"]["content"]
+    r = requests.post(url, headers=headers, json=payload, timeout=60)
+    r.raise_for_status()
+    return r.json()["choices"][0]["message"]["content"]
 
 
-# ---------- Text Model ----------
-def call_text_model(landmark_name: str, language: str):
+def call_text_model(name, language):
     api_key = os.getenv("OPENROUTER_API_KEY")
     url = "https://openrouter.ai/api/v1/chat/completions"
 
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
-    }
-
-    if language == "English":
-        prompt = f"Introduce the landmark {landmark_name} in 4 sentences."
-    else:
-        prompt = f"请用中文介绍地标建筑 {landmark_name}，约4句话。"
+    prompt = (
+        f"Introduce the landmark {name} in 4 sentences."
+        if language == "English"
+        else
+        f"请用中文介绍地标建筑 {name}，约4句话。"
+    )
 
     payload = {
         "model": "xiaomi/mimo-v2-flash:free",
@@ -98,56 +90,76 @@ def call_text_model(landmark_name: str, language: str):
         "temperature": 0.3
     }
 
-    response = requests.post(url, headers=headers, json=payload, timeout=30)
-    response.raise_for_status()
-    return response.json()["choices"][0]["message"]["content"]
-
+    r = requests.post(
+        url,
+        headers={"Authorization": f"Bearer {api_key}"},
+        json=payload,
+        timeout=30
+    )
+    r.raise_for_status()
+    return r.json()["choices"][0]["message"]["content"]
 
 # -----------------------------
-# UI
+# Layout
 # -----------------------------
-uploaded_file = st.file_uploader(
-    "📷 Upload an image / 上传图片",
-    type=["jpg", "jpeg", "png"]
-)
+left, right = st.columns([1, 1.2])
 
-if uploaded_file:
-    image = Image.open(uploaded_file).convert("RGB")
-    st.image(image, use_container_width=True)
+# ========== LEFT ==========
+with left:
+    st.subheader("📷 Input")
 
-    if st.button("🔍 Identify"):
-        with st.spinner("Analyzing image..."):
-            try:
-                img_b64 = image_to_base64(image)
-                result = call_vl_model(img_b64, lang)
-                st.subheader("🧭 Result")
-                st.write(result)
+    lang = st.radio("Language / 语言", ["English", "中文"])
 
-                # ---- TTS ----
-                tts = result.replace("\n", " ")
-                st.components.v1.html(
-                    f"""
-                    <script>
-                    var msg = new SpeechSynthesisUtterance("{tts}");
-                    msg.lang = "{'en-US' if lang=='English' else 'zh-CN'}";
-                    speechSynthesis.speak(msg);
-                    </script>
-                    """,
-                    height=0
+    uploaded_file = st.file_uploader(
+        "Upload an image",
+        type=["jpg", "jpeg", "png"]
+    )
+
+    if uploaded_file:
+        image = Image.open(uploaded_file).convert("RGB")
+        st.image(image, caption="Preview", use_container_width=True)
+
+        if st.button("🔍 Identify Landmark"):
+            with st.spinner("Analyzing image..."):
+                try:
+                    img_b64 = image_to_base64(image)
+                    st.session_state.result = call_vl_model(img_b64, lang)
+                    st.session_state.vl_failed = False
+                except Exception:
+                    st.session_state.vl_failed = True
+                    st.session_state.result = ""
+
+    if st.session_state.vl_failed:
+        st.warning("Image recognition unavailable. Enter landmark manually:")
+        landmark_name = st.text_input(
+            "Landmark name",
+            placeholder="Eiffel Tower / 埃菲尔铁塔"
+        )
+
+        if landmark_name:
+            with st.spinner("Generating introduction..."):
+                st.session_state.result = call_text_model(
+                    landmark_name, lang
                 )
 
-            except Exception:
-                st.warning("⚠️ Image recognition service is busy.")
+# ========== RIGHT ==========
+with right:
+    st.subheader("🧭 Result")
 
-                landmark = st.text_input(
-                    "Enter landmark name manually:",
-                    placeholder="Eiffel Tower / 埃菲尔铁塔"
-                )
+    if st.session_state.result:
+        st.write(st.session_state.result)
 
-                if landmark:
-                    intro = call_text_model(landmark, lang)
-                    st.subheader("🧭 Result")
-                    st.write(intro)
-
-else:
-    st.info("Please upload an image." if lang == "English" else "请上传图片。")
+        # ---- TTS ----
+        tts = st.session_state.result.replace("\n", " ")
+        st.components.v1.html(
+            f"""
+            <script>
+            var msg = new SpeechSynthesisUtterance("{tts}");
+            msg.lang = "{'en-US' if lang=='English' else 'zh-CN'}";
+            speechSynthesis.speak(msg);
+            </script>
+            """,
+            height=0
+        )
+    else:
+        st.info("Result will appear here." if lang == "English" else "结果将在此显示。")
