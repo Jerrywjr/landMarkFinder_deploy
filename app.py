@@ -219,24 +219,25 @@ with left:
 # ---------- RIGHT ----------
 with right:
     st.subheader(T["result"])
-    if st.session_state.parsed:
-        p = st.session_state.parsed
+    if st.session_state.result:
+        result_text = st.session_state.result.strip()
         st.markdown(
             f"""
             <div style="
                 padding:16px;
                 border-radius:12px;
                 background:rgba(128,128,128,0.08);
+                white-space:pre-wrap;
             ">
-                <h4>{T['name']}</h4><p>{p['name']}</p>
-                <h4>{T['location']}</h4><p>{p['location']}</p>
-                <h4>{T['intro']}</h4><p>{p['intro']}</p>
+                {result_text}
             </div>
             """,
             unsafe_allow_html=True
         )
+
         # ---- TTS Controls ----
-        st.button(T["start_speech"], on_click=render_tts, args=(p["intro"], lang, True))
+        st.button(T["start_speech"], on_click=render_tts, args=(result_text, lang, True))
         st.button(T["stop_speech"], on_click=render_tts, args=("", lang, False))
     else:
         st.info(T["waiting"])
+
