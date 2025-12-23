@@ -30,6 +30,7 @@ def image_to_base64(image: Image.Image) -> str:
     """
     Convert PIL Image to base64 string
     """
+    image = image.resize((512, 512))
     buffer = io.BytesIO()
     image.save(buffer, format="PNG")
     return base64.b64encode(buffer.getvalue()).decode("utf-8")
