@@ -4,19 +4,20 @@ from PIL import Image
 import base64
 import io
 import os
+import re
 
-# -----------------------------
+# =============================
 # Page Config
-# -----------------------------
+# =============================
 st.set_page_config(
     page_title="Landmark Recognition",
     page_icon="🌍",
     layout="wide"
 )
 
-# -----------------------------
+# =============================
 # UI Text (i18n)
-# -----------------------------
+# =============================
 UI = {
     "English": {
         "title": "🌍 Landmark Recognition",
@@ -26,9 +27,12 @@ UI = {
         "result": "🧭 Result",
         "preview": "Image Preview",
         "busy": "Image recognition service is busy.",
-        "manual": "Enter landmark name manually",
+        "manual": "Enter landmark name",
+        "confirm": "✅ Confirm",
         "placeholder": "Eiffel Tower",
-        "waiting": "Result will appear here."
+        "waiting": "Result will appear here.",
+        "speech_start": "▶️ Start Speech",
+        "speech_stop": "⏹ Stop Speech"
     },
     "中文": {
         "title": "🌍 地标识别系统",
@@ -38,27 +42,41 @@ UI = {
         "result": "🧭 识别结果",
         "preview": "图片预览",
         "busy": "图像识别服务繁忙",
-        "manual": "手动输入地标名称",
+        "manual": "输入地标名称",
+        "confirm": "✅ 确认",
         "placeholder": "埃菲尔铁塔",
-        "waiting": "结果将在此显示。"
+        "waiting": "结果将在此显示。",
+        "speech_start": "🔊 开始播报",
+        "speech_stop": "🔇 停止播报"
     }
 }
 
-# -----------------------------
+# =============================
 # Session State
-# -----------------------------
-if "result" not in st.session_state:
-    st.session_state.result = ""
-if "vl_failed" not in st.session_state:
-    st.session_state.vl_failed = False
+# =============================
+for key in ["result", "vl_failed", "parsed"]:
+    if key not in st.session_state:
+        st.session_state[key] = None
 
-# -----------------------------
+# =============================
 # Helper Functions
-# -----------------------------
+# =============================
 def image_to_base64(image: Image.Image) -> str:
     buf = io.BytesIO()
     image.save(buf, format="PNG")
     return base64.b64encode(buf.getvalue()).decode()
+
+
+def parse_result(text: str):
+    name = re.search(r"Name[:：]\s*(.*)", text)
+    loc = re.search(r"(City.*Country|城市.*国家)[:：]\s*(.*)", text)
+    intro = text.split("\n")[-1]
+
+    return {
+        "name": name.group(1) if name else "",
+        "location": loc.group(2) if loc else "",
+        "intro": intro
+    }
 
 
 def call_vl_model(image_b64, lang):
@@ -66,10 +84,11 @@ def call_vl_model(image_b64, lang):
     url = "https://openrouter.ai/api/v1/chat/completions"
 
     prompt = (
-        "Identify the landmark in the image and give a short introduction."
+        "Identify the landmark in the image.\n"
+        "Return:\nName:\nCity, Country:\nBrief introduction."
         if lang == "English"
         else
-        "识别图片中的地标建筑并给出简要介绍。"
+        "识别图片中的地标建筑。\n返回：\n名称：\n城市，国家：\n简要介绍。"
     )
 
     payload = {
@@ -78,12 +97,8 @@ def call_vl_model(image_b64, lang):
             "role": "user",
             "content": [
                 {"type": "text", "text": prompt},
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:image/png;base64,{image_b64}"
-                    }
-                }
+                {"type": "image_url",
+                 "image_url": {"url": f"data:image/png;base64,{image_b64}"}}
             ]
         }],
         "temperature": 0.2
@@ -125,9 +140,9 @@ def call_text_model(name, lang):
     r.raise_for_status()
     return r.json()["choices"][0]["message"]["content"]
 
-# -----------------------------
+# =============================
 # Layout
-# -----------------------------
+# =============================
 left, right = st.columns([1, 1.3])
 
 # ---------- LEFT ----------
@@ -140,53 +155,69 @@ with left:
 
     if uploaded:
         image = Image.open(uploaded).convert("RGB")
-
-        # Fixed-size image preview
         st.markdown(
             f"""
-            <div style="text-align:center;">
-                <img src="data:image/png;base64,{image_to_base64(image)}"
-                     style="max-height:260px; max-width:100%; object-fit:contain;" />
-                <div style="font-size:0.85em; color:gray;">{T["preview"]}</div>
-            </div>
+            <img src="data:image/png;base64,{image_to_base64(image)}"
+                 style="max-height:240px; max-width:100%; object-fit:contain;" />
             """,
             unsafe_allow_html=True
         )
 
         if st.button(T["identify"]):
             try:
-                st.session_state.result = call_vl_model(
-                    image_to_base64(image), lang
-                )
+                res = call_vl_model(image_to_base64(image), lang)
+                st.session_state.result = res
+                st.session_state.parsed = parse_result(res)
                 st.session_state.vl_failed = False
             except Exception:
                 st.session_state.vl_failed = True
-                st.session_state.result = ""
 
     if st.session_state.vl_failed:
-        st.warning(T["busy"])
         name = st.text_input(T["manual"], placeholder=T["placeholder"])
-        if name:
-            st.session_state.result = call_text_model(name, lang)
+        if st.button(T["confirm"]) and name:
+            res = call_text_model(name, lang)
+            st.session_state.result = res
+            st.session_state.parsed = {
+                "name": name,
+                "location": "",
+                "intro": res
+            }
 
 # ---------- RIGHT ----------
 with right:
     st.subheader(T["result"])
 
-    if st.session_state.result:
-        st.write(st.session_state.result)
+    if st.session_state.parsed:
+        p = st.session_state.parsed
 
-        # TTS
-        tts = st.session_state.result.replace("\n", " ")
-        st.components.v1.html(
-            f"""
-            <script>
-            var msg = new SpeechSynthesisUtterance("{tts}");
-            msg.lang = "{'en-US' if lang=='English' else 'zh-CN'}";
-            speechSynthesis.speak(msg);
-            </script>
-            """,
-            height=0
-        )
+        st.markdown(f"""
+        <div style="border:1px solid var(--secondary-background-color);
+                    border-radius:10px; padding:16px;">
+            <h3>{p["name"]}</h3>
+            <p><b>{p["location"]}</b></p>
+            <p>{p["intro"]}</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button(T["speech_start"]):
+                st.components.v1.html(
+                    f"""
+                    <script>
+                    window.speechSynthesis.cancel();
+                    var msg = new SpeechSynthesisUtterance("{p["intro"]}");
+                    msg.lang = "{'en-US' if lang=='English' else 'zh-CN'}";
+                    speechSynthesis.speak(msg);
+                    </script>
+                    """,
+                    height=0
+                )
+        with col2:
+            if st.button(T["speech_stop"]):
+                st.components.v1.html(
+                    "<script>speechSynthesis.cancel();</script>",
+                    height=0
+                )
     else:
         st.info(T["waiting"])
